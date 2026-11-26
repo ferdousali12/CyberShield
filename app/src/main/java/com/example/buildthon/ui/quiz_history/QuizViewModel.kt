@@ -1,0 +1,90 @@
+package com.example.buildthon.ui.quiz_history
+
+import androidx.lifecycle.ViewModel
+import com.example.buildthon.data.model.QuizQuestion
+import com.example.buildthon.data.repository.QuizRepository
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+
+data class QuizUiState(
+    val questions: List<QuizQuestion> = emptyList(),
+    val currentIndex: Int = 0,
+    val selectedAnswers: Map<Int, Int> = emptyMap(), // questionIndex -> selectedOptionIndex
+    val isAnswerSubmitted: Boolean = false,
+    val isQuizFinished: Boolean = false,
+    val correctCount: Int = 0,
+    val incorrectCount: Int = 0,
+    val percentageScore: Int = 0
+)
+
+class QuizViewModel(
+    private val repository: QuizRepository = QuizRepository()
+) : ViewModel() {
+
+    private val _uiState = MutableStateFlow(QuizUiState())
+    val uiState: StateFlow<QuizUiState> = _uiState.asStateFlow()
+
+    init {
+        startQuiz()
+    }
+
+    fun startQuiz() {
+        val questions = repository.getQuestions().shuffled()
+        _uiState.update {
+            QuizUiState(
+                questions = questions,
+                currentIndex = 0,
+                selectedAnswers = emptyMap(),
+                isAnswerSubmitted = false,
+                isQuizFinished = false
+            )
+        }
+    }
+
+    fun selectOption(optionIndex: Int) {
+        if (_uiState.value.isAnswerSubmitted) return
+        val currentQIndex = _uiState.value.currentIndex
+        _uiState.update {
+            it.copy(selectedAnswers = it.selectedAnswers + (currentQIndex to optionIndex))
+        }
+    }
+
+    fun submitAnswer() {
+        _uiState.update { it.copy(isAnswerSubmitted = true) }
+    }
+
+    fun nextQuestion() {
+        val state = _uiState.value
+        val nextIndex = state.currentIndex + 1
+        if (nextIndex < state.questions.size) {
+            _uiState.update {
+                it.copy(
+                    currentIndex = nextIndex,
+                    isAnswerSubmitted = false
+                )
+            }
+        } else {
+            // Calculate final results
+            var correct = 0
+            state.questions.forEachIndexed { index, question ->
+                val selected = state.selectedAnswers[index]
+                if (selected == question.correctAnswerIndex) {
+                    correct++
+                }
+            }
+            val incorrect = state.questions.size - correct
+            val percentage = (correct * 100) / state.questions.size
+
+            _uiState.update {
+                it.copy(
+                    isQuizFinished = true,
+                    correctCount = correct,
+                    incorrectCount = incorrect,
+                    percentageScore = percentage
+                )
+            }
+        }
+    }
+}
